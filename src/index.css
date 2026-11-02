@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+  
+  /* Hide non-printable app UI elements during print */
+  header, footer, nav, .print-hidden {
+    display: none !important;
+  }
+}

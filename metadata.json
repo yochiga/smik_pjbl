@@ -1,0 +1,8 @@
+{
+  "name": "SimulasiVokasi",
+  "description": "Simulator Proyek Kejuruan Berbasis Alat & Bahan Sekitar dengan Rekomendasi AI Gemini - SMKN 4 Kendari",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
