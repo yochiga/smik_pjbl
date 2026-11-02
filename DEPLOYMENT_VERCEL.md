@@ -1,76 +1,52 @@
-# Panduan Lengkap Deploy ke Vercel (Gratis / Free Tier)
+# Panduan Lengkap Deploy ke Vercel & Solusi AI di Langkah 2
 
-Aplikasi **SimulasiVokasi SMKN 4 Kendari** telah dikonfigurasi penuh untuk di-hosting di **Vercel** dengan paket gratis (**Hobby Tier** 100% Free).
-
-Arsitektur yang digunakan:
-- **Frontend**: Vite + React + Tailwind CSS di-build menjadi aset statis super cepat di Global CDN Vercel.
-- **Backend API**: Express & Google Gemini AI API berjalan di **Vercel Serverless Functions** (`/api/index.ts`).
-- **Konfigurasi Routing**: Diatur rapi pada `vercel.json`.
+Aplikasi **SimulasiVokasi SMKN 4 Kendari** telah dikonfigurasi penuh untuk berjalan lancar di **Vercel** dengan paket gratis (**Hobby Tier** 100% Free).
 
 ---
 
-## Opsi 1: Deploy Otomatis via GitHub (Sangat Disarankan & Termudah)
+## 🔍 Mengapa Sebelumnya AI Tidak Bekerja di Langkah 2 pada Vercel?
 
-Cara ini paling praktis karena setiap kali Anda push update kode ke GitHub, Vercel akan otomatis men-deploy versi terbaru.
+Ada 3 penyebab teknis utama yang telah kami selesaikan:
 
-1. **Upload / Push Proyek ke GitHub**:
-   Jika belum di GitHub, buat repositori baru di [GitHub](https://github.com/new) dan push kode Anda.
+1. **Path Rewrite Vercel Menghapus Nama Endpoint**:
+   - Sebelumnya pada `vercel.json`, aturan routing rewrite mengarahkan `/api/(.*)` ke `/api`. Hal ini menyebabkan request browser ke `/api/recommend-resources` dan `/api/generate-project` dipotong oleh jaringan Vercel menjadi hanya `/api`, sehingga server Express merespon `404 Not Found`.
+   - **Solusi Kami**:
+     - Memperbaiki `vercel.json` menjadi `"destination": "/api/$1"`.
+     - Menyediakan endpoint langsung: `api/recommend-resources.ts`, `api/generate-project.ts`, `api/ai-chat.ts`, dan `api/health.ts`. Vercel mengenali rute ini secara native tanpa risiko path terpotong.
 
-2. **Buka Vercel**:
-   - Kunjungi [https://vercel.com/](https://vercel.com/) dan buat akun/login dengan akun GitHub Anda.
-   - Di halaman Dashboard Vercel, klik tombol **"Add New..."** lalu pilih **"Project"**.
+2. **Timeout Standar Vercel Serverless (10 Detik)**:
+   - Serverless gratis Vercel membatasi waktu eksekusi default 10 detik. Perancangan jobsheet dan kurikulum AI Gemini memerlukan waktu 6–14 detik, sehingga Vercel memutus koneksi dengan status `504 Gateway Timeout`.
+   - **Solusi Kami**: Menambahkan konfigurasi `"maxDuration": 60` pada `vercel.json` agar AI memiliki waktu cukup untuk menyelesaikan perancangan.
 
-3. **Import Repositori**:
-   - Cari dan pilih repositori GitHub proyek ini, lalu klik **"Import"**.
-
-4. **Konfigurasi Build & Output**:
-   Vercel akan otomatis membaca file `vercel.json` yang sudah kami sediakan:
-   - **Framework Preset**: `Vite`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-
-5. **Tambahkan Environment Variables (Kunci API Gemini)**:
-   - Di bagian **"Environment Variables"**, masukkan:
-     - **Key**: `GEMINI_API_KEY`
-     - **Value**: *(Salin API Key Gemini Anda dari Google AI Studio)*
-   - Klik **Add**.
-
-6. **Klik "Deploy"**:
-   - Tunggu proses build selama ~1 menit.
-   - Selesai! Vercel akan memberikan link website gratis Anda, misalnya: `https://simulasi-vokasi.vercel.app`.
+3. **Environment Variable `GEMINI_API_KEY` Belum Terdaftar di Dashboard Vercel**:
+   - File `.env` lokal tidak ikut ter-upload ke Vercel demi keamanan. Jika `GEMINI_API_KEY` belum dimasukkan di pengaturan Vercel, fungsi AI akan menggunakan kurikulum fallback offline.
+   - **Solusi Kami**: Panduan langkah mudah mendaftarkan API Key di bawah ini.
 
 ---
 
-## Opsi 2: Deploy Cepat via Terminal (Vercel CLI)
+## 🚀 Langkah Deploy & Pengaturan di Vercel:
 
-Jika Anda ingin deploy langsung dari laptop/komputer Anda:
+### Langkah 1: Masukkan `GEMINI_API_KEY` di Dashboard Vercel
+1. Buka dashboard proyek Anda di [https://vercel.com/dashboard](https://vercel.com/dashboard).
+2. Klik proyek **SimulasiVokasi**.
+3. Masuk ke tab **Settings** > pilih menu **Environment Variables**.
+4. Isi data berikut:
+   - **Key**: `GEMINI_API_KEY`
+   - **Value**: *(Paste Google Gemini API Key Anda dari Google AI Studio)*
+   - Centang ketiga target: **Production**, **Preview**, dan **Development**.
+5. Klik **Save**.
 
-1. **Buka Terminal di folder proyek**:
-   ```bash
-   npx vercel
-   ```
-
-2. **Ikuti panduan CLI**:
-   - Tekan `Y` untuk login dan authorize akun Vercel di browser Anda.
-   - Set scope dan nama proyek.
-   - Pilih default untuk semua pengaturan.
-
-3. **Tambahkan Gemini API Key ke Vercel**:
-   ```bash
-   npx vercel env add GEMINI_API_KEY
-   ```
-   *(Pilih Production, Preview, Development lalu paste API Key Anda).*
-
-4. **Deploy ke Domain Production**:
-   ```bash
-   npx vercel --prod
-   ```
-   Terminal akan langsung memberikan URL aktif website Anda!
+### Langkah 2: Lakukan Redeploy (Penting!)
+Setelah Environment Variables disimpan:
+1. Buka tab **Deployments** di Vercel.
+2. Klik ikon titik tiga (**...**) pada deployment terakhir > pilih **Redeploy**.
+3. Tunggu ~45 detik sampai status menjadi **Ready**.
 
 ---
 
-## Keunggulan Server Gratis Vercel untuk Proyek Ini:
-- **Biaya Rp 0 (Gratis Selamanya)** untuk akun Hobby.
-- **SSL / HTTPS Otomatis**: Aman diakses oleh siswa dan guru di HP maupun laptop.
-- **Auto-Scaling**: Kuat menampung puluhan hingga ratusan siswa yang mengakses secara bersamaan tanpa lag.
-- **Serverless**: Tidak perlu mengelola sistem operasi server atau membayar VPS bulanan.
+## 🛠️ Verifikasi Bahwa AI Bekerja:
+- Buka website Anda di browser.
+- Di Langkah 1, ketik profesi apa saja (misal: *sablon baju*, *teknisi ac*, *las listrik*).
+- Masuk ke Langkah 2: AI akan merekomendasikan alat & bahan baku sesuai profesi. Tombol **Rancang Ulang dengan AI** dan pilihan pendekatan (*Standar Vokasi SMK*, *Bahan Daur Ulang*, *Sampel Usaha Komersial*) akan memuat ulang rekomendasi secara cerdas!
+- Klik **Lanjut ke Simulasi & Jobsheet Purwarupa**: AI akan merancang jobsheet lengkap beserta rubrik penilaian dan panduan K3.
+

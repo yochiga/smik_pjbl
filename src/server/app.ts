@@ -20,15 +20,28 @@ app.use((_req, res, next) => {
   next();
 });
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || '',
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
+// Path normalizer middleware for Vercel Serverless Functions and Express rewrites
+app.use((req, _res, next) => {
+  const matched = (req.headers['x-matched-path'] as string) || (req.headers['x-forwarded-uri'] as string);
+  if (matched && matched !== '/api' && matched !== '/') {
+    req.url = matched;
+  }
+  next();
 });
+
+// Helper to get Gemini Client with fresh env vars
+function getAiClient() {
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  if (!apiKey) return null;
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
 
 // Fallback recommendations if offline or key is missing
 function getFallbackRecommendations(profession: string) {
@@ -237,19 +250,22 @@ apiRouter.get('/health', (_req: Request, res: Response) => {
 
 // Endpoint 1: Recommend Tools & Materials using Gemini
 apiRouter.post('/recommend-resources', async (req: Request, res: Response) => {
-  const { profession, context } = req.body;
+  const { profession, context, approach } = req.body;
 
   if (!profession || typeof profession !== 'string' || !profession.trim()) {
     return res.status(400).json({ error: 'Profesi atau bidang usaha harus diisi.' });
   }
 
   const cleanProfession = profession.trim();
+  const selectedApproach = approach || 'Standar Vokasi SMK';
+  const aiClient = getAiClient();
 
   // If Gemini API Key is available, call Gemini 3.8 Flash
-  if (process.env.GEMINI_API_KEY) {
+  if (aiClient) {
     try {
       const prompt = `Anda adalah ahli kurikulum SMK dan praktisi industri kejuruan di Indonesia (khususnya untuk SMK Negeri seperti SMKN 4 Kendari).
 Siswa ingin mendalami profesi / bidang usaha: "${cleanProfession}".
+Pendekatan Purwarupa: "${selectedApproach}".
 Konteks lingkungan: ${context || 'Lingkungan sekolah SMK, lab kejuruan, dan rumah siswa di Indonesia'}.
 
 TUGAS ANDA:
@@ -269,7 +285,7 @@ Kembalikan respon DALAM FORMAT JSON SAJA sesuai struktur berikut:
   "profession": "${cleanProfession}",
   "summary": "Siswa tidak perlu lagi bingung menebak-nebak alat atau bahan apa yang dibutuhkan. AI telah merekomendasikan daftar alat dan bahan baku yang harus ada untuk membuat purwarupa representatif, lengkap dengan alternatif murah dan bahan daur ulang di sekitar siswa.",
   "prototypeIdea": "Judul Purwarupa Konkret",
-  "approach": "Standar Vokasi SMK",
+  "approach": "${selectedApproach}",
   "difficulty": "Mudah",
   "estimatedTime": "2-3 Jam",
   "whyRepresentative": "Penjelasan keterkaitan tugas pokok profesi...",
@@ -301,7 +317,7 @@ Kembalikan respon DALAM FORMAT JSON SAJA sesuai struktur berikut:
   ]
 }`;
 
-      const response = await ai.models.generateContent({
+      const generatePromise = aiClient.models.generateContent({
         model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
@@ -313,6 +329,11 @@ Kembalikan respon DALAM FORMAT JSON SAJA sesuai struktur berikut:
         },
       });
 
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('AI response timed out')), 22000)
+      );
+
+      const response = await Promise.race([generatePromise, timeoutPromise]);
       const text = response.text;
       if (text) {
         try {
@@ -329,6 +350,7 @@ Kembalikan respon DALAM FORMAT JSON SAJA sesuai struktur berikut:
       const fallback = getFallbackRecommendations(cleanProfession);
       return res.json({
         ...fallback,
+        approach: selectedApproach,
         _notice: 'Menggunakan kurikulum cadangan terverifikasi karena koneksi AI sementara terbatas.',
       });
     }
@@ -336,7 +358,13 @@ Kembalikan respon DALAM FORMAT JSON SAJA sesuai struktur berikut:
 
   // If no API key configured
   const fallback = getFallbackRecommendations(cleanProfession);
-  return res.json(fallback);
+  return res.json({
+    ...fallback,
+    approach: selectedApproach,
+    _notice: !process.env.GEMINI_API_KEY
+      ? 'GEMINI_API_KEY belum terpasang di Vercel. Berjalan menggunakan kurikulum internal.'
+      : undefined,
+  });
 });
 
 // Endpoint 2: Generate Project Simulation & Jobsheet
@@ -362,7 +390,8 @@ apiRouter.post('/generate-project', async (req: Request, res: Response) => {
     ? availableMaterials.map((m: any) => (typeof m === 'string' ? m : `${m.name || m.id} [${m.estimatedQty || ''}]`)).join(', ')
     : String(availableMaterials);
 
-  if (process.env.GEMINI_API_KEY) {
+  const aiClient = getAiClient();
+  if (aiClient) {
     try {
       const prompt = `Anda adalah kepala bengkel dan perancang kurikulum SMK Industri terkemuka di Indonesia.
 Rancang sebuah PROYEK SIMULASI PURWARUPA KEJURUAN SMK LENGKAP untuk profesi: "${profession}".
@@ -431,7 +460,7 @@ Kembalikan HANYA format JSON valid sesuai schema:
   "reflectionQuestions": ["string"]
 }`;
 
-      const response = await ai.models.generateContent({
+      const generatePromise = aiClient.models.generateContent({
         model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
@@ -443,6 +472,11 @@ Kembalikan HANYA format JSON valid sesuai schema:
         },
       });
 
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('AI generation timed out')), 24000)
+      );
+
+      const response = await Promise.race([generatePromise, timeoutPromise]);
       const text = response.text;
       if (text) {
         try {
@@ -670,9 +704,10 @@ apiRouter.post('/ai-chat', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Pesan konsultasi tidak boleh kosong.' });
   }
 
-  if (process.env.GEMINI_API_KEY) {
+  const aiClient = getAiClient();
+  if (aiClient) {
     try {
-      const response = await ai.models.generateContent({
+      const response = await aiClient.models.generateContent({
         model: 'gemini-3.8-flash',
         contents: `Anda adalah guru pembimbing kejuruan SMK ramah dan solutif di SMKN 4 Kendari.
 Konteks Proyek Siswa saat ini: ${JSON.stringify(projectContext || {})}

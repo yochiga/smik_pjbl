@@ -36,6 +36,7 @@ interface Step2ResourcesProps {
     notes: string
   ) => void;
   isGeneratingProject: boolean;
+  isAnalyzingResources?: boolean;
   onRegenerateRecommendation?: (approach: PrototypeApproach) => void;
 }
 
@@ -45,6 +46,7 @@ export const Step2Resources: React.FC<Step2ResourcesProps> = ({
   onBackToStep1,
   onGenerateProject,
   isGeneratingProject,
+  isAnalyzingResources = false,
   onRegenerateRecommendation,
 }) => {
   // Selected Approach
@@ -292,13 +294,18 @@ export const Step2Resources: React.FC<Step2ResourcesProps> = ({
         {/* Rancang Ulang dengan AI */}
         <button
           type="button"
+          disabled={isAnalyzingResources || isGeneratingProject}
           onClick={() => {
             if (onRegenerateRecommendation) onRegenerateRecommendation(selectedApproach);
           }}
-          className="self-start sm:self-center px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+          className="self-start sm:self-center px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
         >
-          <RotateCw className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Rancang Ulang dengan AI</span>
+          {isAnalyzingResources ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+          ) : (
+            <RotateCw className="w-3.5 h-3.5 text-indigo-400" />
+          )}
+          <span>{isAnalyzingResources ? 'Menganalisis...' : 'Rancang Ulang dengan AI'}</span>
         </button>
       </div>
 

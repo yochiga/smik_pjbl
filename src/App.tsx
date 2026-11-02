@@ -15,6 +15,7 @@ import {
   ToolItem,
   MaterialItem,
   ProjectSimulation,
+  PrototypeApproach,
 } from './types';
 import {
   INITIAL_SAVED_PROJECTS,
@@ -70,6 +71,27 @@ export default function App() {
   // AI Consultant Modal
   const [isAiConsultantOpen, setIsAiConsultantOpen] = useState(false);
 
+  // Gemini API Key detection on deployed host (Vercel)
+  const [geminiStatus, setGeminiStatus] = useState<{ configured: boolean; checked: boolean }>({
+    configured: true,
+    checked: false,
+  });
+  const [showConfigNotice, setShowConfigNotice] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then((res) => res.json())
+      .then((data) => {
+        setGeminiStatus({
+          configured: Boolean(data.geminiConfigured),
+          checked: true,
+        });
+      })
+      .catch(() => {
+        setGeminiStatus({ configured: false, checked: true });
+      });
+  }, []);
+
   // Reset to Step 1
   const handleReset = () => {
     setCurrentTab('recommendation');
@@ -81,7 +103,10 @@ export default function App() {
   };
 
   // Step 1: Submit Profession -> Call AI API to recommend tools and materials
-  const handleProfessionSubmit = async (selectedProfession: string) => {
+  const handleProfessionSubmit = async (
+    selectedProfession: string,
+    approach?: PrototypeApproach
+  ) => {
     setProfession(selectedProfession);
     setIsAnalyzingResources(true);
 
@@ -89,7 +114,10 @@ export default function App() {
       const response = await fetch('/api/recommend-resources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profession: selectedProfession }),
+        body: JSON.stringify({
+          profession: selectedProfession,
+          approach: approach || 'Standar Vokasi SMK',
+        }),
       });
 
       if (!response.ok) {
@@ -106,6 +134,7 @@ export default function App() {
       // Fallback state
       setRecommendation({
         profession: selectedProfession,
+        approach: approach || 'Standar Vokasi SMK',
         summary: `Simulasi terapan untuk profesi ${selectedProfession} di lingkungan SMKN 4 Kendari.`,
         prototypeIdea: `Purwarupa Simulasi Kejuruan: ${selectedProfession}`,
         recommendedTools: [
@@ -289,6 +318,26 @@ export default function App() {
         {currentTab === 'recommendation' && (
           <>
             {/* Stepper Progress Bar */}
+            {/* Status notice if GEMINI_API_KEY is not set on Vercel deployment */}
+            {geminiStatus.checked && !geminiStatus.configured && showConfigNotice && (
+              <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 text-xs text-amber-200 flex items-start sm:items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-start sm:items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 mt-0.5 sm:mt-0 animate-pulse" />
+                  <div>
+                    <span className="font-bold text-amber-300">Tips Integrasi Vercel:</span> AI saat ini menggunakan bank kurikulum internal. Untuk mengaktifkan generative AI Gemini live di Vercel, buka <strong>Vercel Dashboard &gt; Project &gt; Settings &gt; Environment Variables</strong>, tambahkan <code>GEMINI_API_KEY</code>, lalu klik <strong>Redeploy</strong>.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowConfigNotice(false)}
+                  className="text-amber-400 hover:text-white px-2 py-1 text-xs font-bold rounded bg-amber-500/20 hover:bg-amber-500/30 cursor-pointer shrink-0"
+                >
+                  Tutup
+                </button>
+              </div>
+            )}
+
+            {/* Stepper Progress */}
             <div className="print:hidden">
               <Stepper
                 currentStep={currentStep}
@@ -319,8 +368,9 @@ export default function App() {
                 onBackToStep1={() => setCurrentStep(1)}
                 onGenerateProject={handleGenerateProject}
                 isGeneratingProject={isGeneratingProject}
-                onRegenerateRecommendation={() => {
-                  handleProfessionSubmit(profession || 'sablon baju');
+                isAnalyzingResources={isAnalyzingResources}
+                onRegenerateRecommendation={(approach) => {
+                  handleProfessionSubmit(profession || 'sablon baju', approach);
                 }}
               />
             )}
